@@ -13,7 +13,7 @@ import argparse
 
 
 def log_uncaught_exceptions(exception_type, exception, tb):
-  print exception_type, exception, tb
+  # print exception_type, exception, tb
   print "Shutting down!"
   exit(1)
 
