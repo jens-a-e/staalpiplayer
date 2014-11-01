@@ -17,14 +17,13 @@ sys.excepthook = log_uncaught_exceptions
 class dmx_runner(threading.Thread):
 
   def __init__ (self, port):
-    # threading.Thread.__init__(self)
     super(dmx_runner, self).__init__()
     self._stop = threading.Event()
     self.port = port
     self.client = 14
     self.midiport = 0
     self.seq = None
-    self.channels = 127 # TODO fix in dmx module to 512 max (actually 512 + 1 universe)
+    self.channels = 128 # TODO fix in dmx module to 512 max (actually 512 + 1 universe)
     self.manager = DMXManager(self.port)
     self.default = DMXDevice(start=1, length=self.channels) # TODO: load from config!
     self.manager.append(self.default)

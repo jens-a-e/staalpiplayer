@@ -9,6 +9,9 @@ import random
 class DMXDevice(object):
   def __init__(self, start, length):
     self.start, self.length = start, length
+    if start < 1:
+      print "DMX Channels must start at least at 1!"
+      self.start = 1
     self.values = [0] * self.length
 
   def set(self, chan, value):
@@ -24,24 +27,32 @@ class DMXDevice(object):
     return "<DMXDevice start=%d, length=%d>" % (self.start, self.length)
 
 class DMXManager(object):
-  def __init__(self, port):
+  def __init__(self, port, max_channels = 512):
+    self.MAX_CHANNELS = max_channels
+    self.UNIVERSE = 1
+    self.SEND_LABEL = 6
     self.s = serial.Serial(port)
-    self.buf = numpy.zeros((128,), dtype='B')
+    self.buf = numpy.zeros((self.MAX_CHANNELS + self.UNIVERSE,), dtype='B')
     self.devices = []
 
   def append(self, device):
     self.devices.append(device)
 
+  def blackout(self):
+    self.buf = numpy.zeros((self.MAX_CHANNELS + self.UNIVERSE,), dtype='B')
+    self._send()
+
   def send(self):
     for device in self.devices:
       device.pack(self.buf)
-
+    self._send()
+    
+  def _send(self):
     msg = struct.pack("<BBH 128s B",
-      0x7e, 6, 128, 
+      0x7e, self.SEND_LABEL, self.MAX_CHANNELS + self.UNIVERSE, 
       self.buf.tostring(),
       0xe7
     )
-
     self.s.write(msg)
 
 if __name__=='__main__':
