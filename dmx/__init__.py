@@ -31,7 +31,7 @@ class DMXManager(object):
     self.MAX_CHANNELS = max_channels
     self.UNIVERSE = 1
     self.SEND_LABEL = 6
-    self.s = serial.Serial(port)
+    self.s = serial.Serial(port,57600,parity=serial.PARITY_EVEN, rtscts=1)
     self.buf = numpy.zeros((self.MAX_CHANNELS + self.UNIVERSE,), dtype='B')
     self.devices = []
 

@@ -22,13 +22,17 @@ toggle = False
 
 def button_press(channel):
   """on button down"""
-  global toggle
-  toggle = False if toggle else True
+  try:
+    global toggle
+    toggle = False if toggle else True
   
-  if toggle is True:
-    client.send( OSCMessage("/play", button_map[str(channel)] ) )
-  else:
-    client.send( OSCMessage("/stop" ) )
+    if toggle is True:
+      client.send( OSCMessage("/play", button_map[str(channel)] ) )
+    else:
+      client.send( OSCMessage("/stop" ) )
+  except Exception, e:
+    pass
+  
   
 if __name__ == "__main__":
   sys.excepthook = log_uncaught_exceptions
