@@ -9,8 +9,13 @@ import subprocess
 from subprocess import call
 import dmxout
 
+run = False
 
-dmx = dmxout.start_dmx("/dev/ttyUSB1")
+def song_end():
+  global run
+  run = False
+
+dmx = dmxout.start_dmx("/dev/ttyUSB1",song_end)
 
 def log_uncaught_exceptions(exception_type, exception, tb):
   global dmx
@@ -25,8 +30,6 @@ sys.excepthook = log_uncaught_exceptions
 # RPi.GPIO Layout verwenden (wie Pin-Nummern)
 GPIO.setmode(GPIO.BOARD)
 
-global run
-run = False
 
 def button_press(channel):
   """when a button is pressed"""
@@ -45,9 +48,7 @@ def button_press(channel):
     print "Playing....",file
     proc = subprocess.Popen("aplaymidi -p14:0 "+file,shell=True, stdout=subprocess.PIPE)
     print "PID:",proc.pid # Maybe use this to specifically kill a player
-    
-
-
+  
 GPIO.setup(15, GPIO.IN, pull_up_down=GPIO.PUD_UP)
 GPIO.add_event_detect(15, GPIO.FALLING, callback=button_press, bouncetime=1000)
 
@@ -56,13 +57,11 @@ GPIO.setup(11, GPIO.OUT, initial=GPIO.LOW)
 
 
 try:
-  global run
   # Dauersschleife
   while 1:
     # LED immer ausmachen
     GPIO.output(11, GPIO.LOW)
 
-    global run
     # GPIO lesen
     if run:
       # LED an
