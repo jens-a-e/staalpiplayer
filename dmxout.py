@@ -23,8 +23,8 @@ class dmx_runner(threading.Thread):
     self.client = 14
     self.midiport = 0
     self.seq = None
-    self.channels = 128 # TODO fix in dmx module to 512 max (actually 512 + 1 universe)
-    self.manager = DMXManager(self.port)
+    self.channels = 128
+    self.manager = DMXManager(self.port,self.channels)
     self.default = DMXDevice(start=1, length=self.channels) # TODO: load from config!
     self.manager.append(self.default)
 
