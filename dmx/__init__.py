@@ -31,7 +31,7 @@ class DMXManager(object):
     self.MAX_CHANNELS = max_channels
     self.UNIVERSE = 1
     self.SEND_LABEL = 6
-    self.s = serial.Serial(port,57600,parity=serial.PARITY_EVEN, rtscts=1)
+    self.s = serial.Serial(port,57600) #,parity=serial.PARITY_EVEN, rtscts=1)
     self.buf = numpy.zeros((self.MAX_CHANNELS + self.UNIVERSE,), dtype='B')
     self.devices = []
 
@@ -40,20 +40,25 @@ class DMXManager(object):
 
   def blackout(self):
     self.buf = numpy.zeros((self.MAX_CHANNELS + self.UNIVERSE,), dtype='B')
-    self._send()
-
-  def send(self):
-    for device in self.devices:
-      device.pack(self.buf)
-    self._send()
-    
-  def _send(self):
-    msg = struct.pack("<BBH 128s B",
-      0x7e, self.SEND_LABEL, self.MAX_CHANNELS + self.UNIVERSE, 
+    l = len(self.buf)
+    msg = struct.pack("<BBH "+str(l)+"s B",
+      0x7e, self.SEND_LABEL, l, 
       self.buf.tostring(),
       0xe7
     )
     self.s.write(msg)
+    
+  def send(self):
+    for device in self.devices:
+      device.pack(self.buf)
+    l = len(self.buf)
+    msg = struct.pack("<BBH "+str(l)+"s B",
+      0x7e, self.SEND_LABEL, l, 
+      self.buf.tostring(),
+      0xe7
+    )
+    self.s.write(msg)
+    
 
 if __name__=='__main__':
   port = sys.argv[1]
