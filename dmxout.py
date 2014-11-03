@@ -1,12 +1,15 @@
 import time
 from dmx import DMXDevice
 from dmx import DMXManager
+from midimapper import MIDIMapper
 import sys
 import midi
 import midi.sequencer as sequencer
 from thread import start_new_thread, allocate_lock
 import threading
 
+def vel2val(velocity):
+  return int(255/127.0 * velocity)
 
 def log_uncaught_exceptions(exception_type, exception, tb):
   print "log exception",exception_type, exception, tb
@@ -15,8 +18,9 @@ sys.excepthook = log_uncaught_exceptions
 
 class dmx_runner(threading.Thread):
 
-  def __init__ (self, port, end_callback):
+  def __init__ (self, port, end_callback, midi_map):
     super(dmx_runner, self).__init__()
+    self.mapper = MIDIMapper(midi_map)
     self.end_callback = end_callback
     self._stop = threading.Event()
     self.port = port
@@ -33,7 +37,7 @@ class dmx_runner(threading.Thread):
 
   def stopped(self):
     return self._stop.isSet()
-    
+
   def _blackout(self):
     for channel in range(self.channels):
       self.default.set(channel, 0)
@@ -59,15 +63,9 @@ class dmx_runner(threading.Thread):
               hasEvents = False
               break
             if isinstance(event, midi.NoteEvent):
-              channel = event.pitch # TODO: mapping goes here
-              if isinstance(event, midi.NoteOnEvent):
-                value = event.velocity * 2
-              if isinstance(event, midi.NoteOffEvent):
-                value = 0
-              if channel < self.channels:
+              value = vel2val(event.velocity) if isinstance(event, midi.NoteOnEvent) else 0
+              for channel in self.mapper.to_dmx(event.pitch):
                 self.default.set(channel, value)
-              else:
-                print "target channel to high", channel, self.channels
             elif isinstance(event,midi.ControlChangeEvent):
               if event.control is 0x7B or (event.control is 120 and event.value is 0):
                 self._blackout()
@@ -87,7 +85,7 @@ class dmx_runner(threading.Thread):
             self.manager.send()
             time.sleep(0.025) # ~40FPS
           pass
-        
+
     except Exception, e:
       # Main thread exception catching
       print "On terminate",e
@@ -99,8 +97,8 @@ class dmx_runner(threading.Thread):
 
 main_dmx = None
 
-def start_dmx(port,end_callback):
-  main_dmx = dmx_runner(port,end_callback)
+def start_dmx(port,end_callback,midi_map):
+  main_dmx = dmx_runner(port,end_callback,midi_map)
   main_dmx.start()
   return main_dmx
 

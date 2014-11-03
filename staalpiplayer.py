@@ -22,7 +22,9 @@ parser.add_argument("--statuspin", type=int, default=11,
   help="The status pin to blink on running")
 parser.add_argument("--files", default="./midi",
   help="The midi file directory with numbered MIDI files")
-      
+parser.add_argument("--map", default="etc/midimap.txt",
+  help="A file describing which MIDI note corresponds to which DMX channel(s) - In Max/MSP coll format!")
+
 args = parser.parse_args()
 
 run = False
@@ -31,7 +33,7 @@ def song_end():
   global run
   run = False
 
-dmx = dmxout.start_dmx(args.s,song_end)
+dmx = dmxout.start_dmx(args.s,song_end,args.map)
 
 server = OSCServer( (args.ip, args.port) )
 
@@ -51,7 +53,7 @@ def log_uncaught_exceptions(exception_type, exception, tb):
   dmx.stop()
   print "Shutting down!"
   exit(0)
-  
+
 sys.excepthook = log_uncaught_exceptions
 
 
@@ -84,7 +86,7 @@ def play_callback(path, tags, args, source):
     play(args[0])
   except Exception,e:
     print "Playing file ", args[0], "failed!", e
-  
+
 def quit_callback(path, tags, args, source):
   # don't do this at home (or it'll quit blender)
   stop()
@@ -101,7 +103,7 @@ try:
     # handle all pending requests then return
     while not server.timed_out:
       server.handle_request()
-    
+
     GPIO.output(args.statuspin, GPIO.LOW)
     # GPIO lesen
     if run:
@@ -124,4 +126,3 @@ finally:
   GPIO.cleanup()
   server.close()
   pass
-      
