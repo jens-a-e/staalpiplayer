@@ -7,16 +7,25 @@ import math
 import random
 
 class DMXDevice(object):
+  DEBUG = False
   def __init__(self, start, length):
     self.start, self.length = start, length
     if start < 1:
       print "DMX Channels must start at least at 1!"
       self.start = 1
-    self.values = [0] * self.length
+    self.blackout()
 
   def set(self, chan, value):
-    """set the value of this channel to value (relative channel number)"""
-    self.values[chan] = value
+    """set the value of this channel to value
+    (Remember, that DMX channels in start at 1)"""
+    if chan >= 1 and chan <= self.length:
+      self.values[chan-1] = value
+    else:
+      if self.DEBUG is not None and self.DEBUG is True:
+        print "DMX Device debug: Channel "+str(chan)+" not in range!"
+
+  def blackout(self):
+    self.values = [0] * self.length
 
   def pack(self, buf):
     """modify the passed buffer in place"""
@@ -31,7 +40,7 @@ class DMXManager(object):
     self.MAX_CHANNELS = max_channels
     self.UNIVERSE = 1
     self.SEND_LABEL = 6
-    self.s = serial.Serial(port,57600) #,parity=serial.PARITY_EVEN, rtscts=1)
+    self.s = serial.Serial(port,57600)
     self.buf = numpy.zeros((self.MAX_CHANNELS + self.UNIVERSE,), dtype='B')
     self.devices = []
 
@@ -39,26 +48,21 @@ class DMXManager(object):
     self.devices.append(device)
 
   def blackout(self):
-    self.buf = numpy.zeros((self.MAX_CHANNELS + self.UNIVERSE,), dtype='B')
-    l = len(self.buf)
-    msg = struct.pack("<BBH "+str(l)+"s B",
-      0x7e, self.SEND_LABEL, l, 
-      self.buf.tostring(),
-      0xe7
-    )
-    self.s.write(msg)
-    
+    for device in self.devices:
+      device.blackout()
+    self.send()
+
   def send(self):
     for device in self.devices:
       device.pack(self.buf)
     l = len(self.buf)
     msg = struct.pack("<BBH "+str(l)+"s B",
-      0x7e, self.SEND_LABEL, l, 
+      0x7e, self.SEND_LABEL, l,
       self.buf.tostring(),
       0xe7
     )
     self.s.write(msg)
-    
+
 
 if __name__=='__main__':
   port = sys.argv[1]

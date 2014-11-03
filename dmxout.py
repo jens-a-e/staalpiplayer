@@ -38,10 +38,8 @@ class dmx_runner(threading.Thread):
   def stopped(self):
     return self._stop.isSet()
 
-  def _blackout(self):
-    for channel in range(self.channels):
-      self.default.set(channel, 0)
-    self.manager.send()
+  def blackout(self):
+    self.manager.blackout()
 
   def run(self):
     if self.seq is not None:
@@ -68,7 +66,7 @@ class dmx_runner(threading.Thread):
                 self.default.set(channel, value)
             elif isinstance(event,midi.ControlChangeEvent):
               if event.control is 0x7B or (event.control is 120 and event.value is 0):
-                self._blackout()
+                self.blackout()
                 if self.end_callback is not None:
                   self.end_callback()
         except Exception, e:
@@ -92,7 +90,7 @@ class dmx_runner(threading.Thread):
       pass # on exception
     finally:
       print "Terminating DMX. Sending Blackout"
-      self._blackout()
+      self.blackout()
       pass
 
 main_dmx = None
