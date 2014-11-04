@@ -9,19 +9,27 @@ import dmxout
 import argparse
 import math
 from OSC import OSCServer
+from OSC import OSCClient, OSCMessage
 
 parser = argparse.ArgumentParser()
 
 parser.add_argument("-s", default="/dev/ttyUSB0",
   help="The serial port for the Enttec DMX USB Pro box")
-parser.add_argument("--ip", default="127.0.0.1",
+parser.add_argument("--serverip", default="127.0.0.1",
   help="The IP to listening on")
-parser.add_argument("--port", type=int, default=8001,
+parser.add_argument("--serverport", type=int, default=8001,
   help="The port to listening on")
+parser.add_argument("--notifierip", default="127.0.0.1",
+  help="The IP to listening on")
+parser.add_argument("--notifierport", type=int, default=8002,
+  help="The port to send notifications to")
+
 parser.add_argument("--statuspin", type=int, default=11,
   help="The status pin to blink on running")
+
 parser.add_argument("--files", default="./midi",
   help="The midi file directory with numbered MIDI files")
+
 parser.add_argument("--map", default="etc/midimap.txt",
   help="A file describing which MIDI note corresponds to which DMX channel(s) - In Max/MSP coll format!")
 
@@ -32,10 +40,12 @@ run = False
 def song_end():
   global run
   run = False
+  notifier.send( OSCMessage("/stopped") )
 
 dmx = dmxout.start_dmx(args.s,song_end,args.map)
 
-server = OSCServer( (args.ip, args.port) )
+notifier = OSCClient()
+server = OSCServer( (args.serverip, args.serverport) )
 
 server.timeout = 0
 # this method of reporting timeouts only works by convention
@@ -72,8 +82,9 @@ def play(file_num):
   run = True
   file = args.files+"/"+str(file_num)+".mid"
   print "Playing....",file
-  proc = subprocess.Popen("aplaymidi -p14:0 "+file,shell=True, stdout=subprocess.PIPE)
+  proc = subprocess.Popen("aplaymidi -p14:0 "+file, shell=True, stdout=subprocess.PIPE)
   print "PID:",proc.pid # Maybe use this to specifically kill a player
+  notifier.send( OSCMessage("/playing", file, proc.pid) )
 
 
 # Control LED
@@ -88,15 +99,14 @@ def play_callback(path, tags, args, source):
     print "Playing file ", args[0], "failed!", e
 
 def quit_callback(path, tags, args, source):
-  # don't do this at home (or it'll quit blender)
   stop()
 
 server.addMsgHandler( "/play", play_callback )
 server.addMsgHandler( "/stop", quit_callback )
 
-
 try:
   # Dauersschleife
+  notifier.connect( (args.notifierip, args.notifierport) )
   while 1:
     # LED immer ausmachen
     server.timed_out = False
