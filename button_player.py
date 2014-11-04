@@ -1,4 +1,5 @@
 #!/usr/bin/env python
+from datetime import datetime, timedelta
 
 button_map = (15,16,18)
 
@@ -13,7 +14,6 @@ import argparse
 
 import RPi.GPIO as GPIO
 
-from datetime import datetime, timedelta
 
 from OSC import OSCServer
 from OSC import OSCClient, OSCMessage
@@ -44,6 +44,7 @@ def log_uncaught_exceptions(exception_type, exception, tb):
   exit(1)
 
 client = OSCClient()
+
 # this method of reporting timeouts only works by convention
 # that before calling handle_request() field .timed_out is
 # set to False
@@ -57,20 +58,20 @@ last_play_time = datetime.now()
 def button_press(channel):
   """on button down"""
   try:
-    global running
-
+    global running, last_play_time
     # Check for a timeout of 1 hour to make sure we can play after some time, if missing server packages
 
-    since = datetime.now() - last_play_time
-
-    if since > play_timeout:
+    if datetime.now() - last_play_time > play_timeout:
+      print "Player timed out. Sending play anyways..."
       running = False
 
-    if running is False:
+    if running is not True:
       try:
+        print "Sending play",button_map.index(channel)
         client.send( OSCMessage("/play", button_map.index(channel) ) )
         running = True
         last_play_time = datetime.now()
+        print "Last play time",last_play_time
       except Exception,e:
         print "Button "+str(channel)+" not in map:", button_map
         pass
@@ -78,6 +79,7 @@ def button_press(channel):
       if args.toggle:
         client.send( OSCMessage("/stop" ) )
   except Exception, e:
+    print "Error on button press:",e
     pass
 
 def remote_stopped_callback(path, tags, args, source):
