@@ -1,0 +1,128 @@
+#! /bin/sh
+### BEGIN INIT INFO
+# Provides:          player.sh
+# Required-Start:    $remote_fs $syslog
+# Required-Stop:     $remote_fs $syslog
+# Default-Start:     2 3 4 5
+# Default-Stop:      0 1 6
+# Short-Description: Staalplaat RasPi MIDI to DMX player
+### END INIT INFO
+
+PATH=/sbin:/usr/sbin:/bin:/usr/bin:/usr/local/sbin
+
+# daemon description
+DESC=""
+# daemon name
+NAME="player.sh"
+# daemon user (should not be root)
+DUSER="root"
+# daemon group (should also not be root)
+DGROUP="root"
+# script working dir
+DIR="/root/staalpiplayer"
+# full script path
+DAEMON="$DIR/$NAME"
+# daemon's PID file (this should be placet into /tmp to run the daemon with any user which has no special/root privs)
+PIDFILE=/tmp/$NAME.pid
+# init script path and name
+SCRIPTNAME=/etc/init.d/$NAME
+
+
+# check if the script does exist, otherwise exit the init script
+[ -x "$DAEMON" ] || exit 1
+
+
+# Define LSB log_* functions.
+# Depend on lsb-base (>= 3.2-14) to ensure that this file is present
+# and status_of_proc is working.
+. /lib/lsb/init-functions
+
+# function to start the daemon
+do_start()
+{
+        # Return
+        #   0 if daemon has been started
+        #   1 if daemon could not be started
+	daemon --name=$NAME $DLOG -F $PIDFILE -r -U --idiot -D $DIR -u "$DUSER:$DGROUP" $DAEMON
+	if [ $? -ne "0" ];then
+		return 2
+	fi
+	return 0
+}
+
+# function to stop the daemon
+do_stop()
+{
+	# Return
+	#   0 if daemon has been stopped
+	#   1 if daemon was already stopped or could not be stopped
+	daemon --stop --name=$NAME -F $PIDFILE
+	if [ $? -ne "0" ];then
+		return 1
+	fi
+	sleep 2
+	return 0
+}
+
+# function to check the daemon's status
+do_check_status()
+{
+	# Return
+	#	0 if daemon is running
+	#	1 if daemon is not running
+	daemon --running --name=$NAME -F $PIDFILE
+	if [ $? -ne "0" ];then
+		return 1
+	fi
+	return 0
+}
+
+
+case "$1" in
+  start)
+	log_daemon_msg "Starting" "$NAME"
+	do_start
+	case "$?" in
+		0|1) log_end_msg 0 ;;
+		2)   log_end_msg 1 ;;
+	esac
+	;;
+  stop)
+	log_daemon_msg "Stopping" "$NAME"
+	do_stop
+	case "$?" in
+		0|1) log_end_msg 0 ;;
+		2)   log_end_msg 1 ;;
+	esac
+	;;
+  status)
+	log_daemon_msg "Status" "$NAME"
+	do_check_status
+	case "$?" in
+		0) log_end_msg 0 ;;
+		1) log_end_msg 1 ;;
+	esac
+	;;
+  restart|force-reload)
+	log_daemon_msg "Restarting" "$NAME"
+	do_stop
+	case "$?" in
+	  0|1)
+		do_start
+		case "$?" in
+			0) log_end_msg 0 ;;
+			1) log_end_msg 1 ;; # Old process is still running
+			*) log_end_msg 1 ;; # Failed to start
+		esac
+		;;
+	  *)
+		# Failed to stop
+		log_end_msg 1
+		;;
+	esac
+	;;
+  *)
+	echo "Usage: $SCRIPTNAME {start|stop|status|restart}" >&2
+	exit 3
+	;;
+esac
