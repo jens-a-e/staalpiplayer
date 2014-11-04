@@ -15,10 +15,12 @@ parser = argparse.ArgumentParser()
 
 parser.add_argument("-s", default="/dev/ttyUSB0",
   help="The serial port for the Enttec DMX USB Pro box")
+
 parser.add_argument("--serverip", default="127.0.0.1",
   help="The IP to listening on")
 parser.add_argument("--serverport", type=int, default=8001,
   help="The port to listening on")
+
 parser.add_argument("--notifierip", default="127.0.0.1",
   help="The IP to listening on")
 parser.add_argument("--notifierport", type=int, default=8002,
@@ -39,8 +41,10 @@ run = False
 
 def song_end():
   global run
-  run = False
-  notifier.send( OSCMessage("/stopped") )
+  if run is not False:
+    print "Song ended."
+    run = False
+    notifier.send( OSCMessage("/stopped") )
 
 dmx = dmxout.start_dmx(args.s,song_end,args.map)
 
@@ -70,10 +74,12 @@ sys.excepthook = log_uncaught_exceptions
 # RPi.GPIO Layout verwenden (wie Pin-Nummern)
 GPIO.setmode(GPIO.BOARD)
 
-def stop():
-  print
-  print "Stopping...."
+def kill_midi():
   call(["pkill","aplaymidi"])
+
+def stop():
+  print "Stopping...."
+  kill_midi()
   song_end()
 
 
@@ -107,6 +113,13 @@ server.addMsgHandler( "/stop", quit_callback )
 try:
   # Dauersschleife
   notifier.connect( (args.notifierip, args.notifierport) )
+  print "StaalPiPlayer Ready."
+  print "Resetting system..."
+  stop() # reset on boot
+  print "Reset done."
+  print "\tlistening as:\t"+str(server)
+  print "\tsending as:\t"+str(notifier)
+
   while 1:
     # LED immer ausmachen
     server.timed_out = False
