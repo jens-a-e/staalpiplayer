@@ -3,11 +3,13 @@
 import time
 import RPi.GPIO as GPIO
 import sys
-import subprocess
+import subprocess, pipes
 from subprocess import call
 import dmxout
 import argparse
 import math
+import glob
+from os import path
 from OSC import OSCServer
 from OSC import OSCClient, OSCMessage
 
@@ -38,6 +40,18 @@ parser.add_argument("--map", default="etc/midimap.txt",
 args = parser.parse_args()
 
 run = False
+
+
+def get_midi_files():
+  """Get an up to date list of files in the set directory"""
+  return glob.glob(args.files+"/*.mid")
+
+def get_midi_file(index):
+  midi_list = get_midi_files()
+  if len(midi_list) > 0:
+    return midi_list[index]
+  else:
+    return None
 
 def song_end():
   global run
@@ -70,6 +84,8 @@ def log_uncaught_exceptions(exception_type, exception, tb):
 
 sys.excepthook = log_uncaught_exceptions
 
+def shellquote(s):
+    return "'" + s.replace("'", "'\\''") + "'"
 
 # RPi.GPIO Layout verwenden (wie Pin-Nummern)
 GPIO.setmode(GPIO.BOARD)
@@ -82,20 +98,18 @@ def stop():
   kill_midi()
   song_end()
 
-
 def play(file_num):
   global args,run
   run = True
-  file = args.files+"/"+str(file_num)+".mid"
+  file = get_midi_file(file_num)
   print "Playing....",file
-  proc = subprocess.Popen("aplaymidi -p14:0 "+file, shell=True, stdout=subprocess.PIPE)
-  print "PID:",proc.pid # Maybe use this to specifically kill a player
-  notifier.send( OSCMessage("/playing", file, proc.pid) )
-
+  kill_midi()
+  proc = subprocess.Popen('aplaymidi -p14:0 {}'.format(pipes.quote(file)), shell=True, close_fds=True, stdout=subprocess.PIPE)
+  print "\tPID:",proc.pid # Maybe use this to specifically kill a player
+  notifier.send( OSCMessage("/playing", path.basename(file), proc.pid) )
 
 # Control LED
 GPIO.setup(args.statuspin, GPIO.OUT, initial=GPIO.LOW)
-
 
 def play_callback(path, tags, args, source):
   """play callback from osc"""
@@ -110,42 +124,42 @@ def quit_callback(path, tags, args, source):
 server.addMsgHandler( "/play", play_callback )
 server.addMsgHandler( "/stop", quit_callback )
 
-try:
-  # Dauersschleife
-  notifier.connect( (args.notifierip, args.notifierport) )
-  print "StaalPiPlayer Ready."
-  print "Resetting system..."
-  stop() # reset on boot
-  print "Reset done."
-  print "\tlistening as:\t"+str(server)
-  print "\tsending as:\t"+str(notifier)
+if __name__ == "__main__":
+  try:
+    notifier.connect( (args.notifierip, args.notifierport) )
+    print "StaalPiPlayer Ready."
+    print "Resetting system..."
+    stop() # reset on boot
+    print "Reset done."
+    print "\tlistening as:\t"+str(server)
+    print "\tsending as:\t"+str(notifier)
 
-  while 1:
-    # LED immer ausmachen
-    server.timed_out = False
-    # handle all pending requests then return
-    while not server.timed_out:
-      server.handle_request()
+    # Dauersschleife
+    while 1:
+      server.timed_out = False
+      # handle all pending requests then return
+      while not server.timed_out:
+        server.handle_request()
 
-    GPIO.output(args.statuspin, GPIO.LOW)
-    # GPIO lesen
-    if run:
-      # LED an
-      GPIO.output(args.statuspin, GPIO.HIGH)
+      GPIO.output(args.statuspin, GPIO.LOW)
+      # GPIO lesen
+      if run:
+        # LED an
+        GPIO.output(args.statuspin, GPIO.HIGH)
+
+        # Warte 100 ms
+        time.sleep(0.1)
+
+        # LED aus
+        GPIO.output(args.statuspin, GPIO.LOW)
 
       # Warte 100 ms
       time.sleep(0.1)
 
-      # LED aus
-      GPIO.output(args.statuspin, GPIO.LOW)
-
-    # Warte 100 ms
-    time.sleep(0.1)
-
-except Exception, e:
-  pass
-finally:
-  stop()
-  GPIO.cleanup()
-  server.close()
-  pass
+  except Exception, e:
+    pass
+  finally:
+    stop()
+    GPIO.cleanup()
+    server.close()
+    pass

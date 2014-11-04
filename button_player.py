@@ -1,15 +1,20 @@
 #!/usr/bin/env python
 
-button_map = {
-  '15': 1
-}
+button_map = (15,16,18)
+
+# This is just for absolute backup, if server did not respond with '/stopped'
+play_timeout = timedelta(hours=1)
 
 #####################################################################
 import time
 import types
 import sys
 import argparse
+
 import RPi.GPIO as GPIO
+
+from datetime import datetime, timedelta
+
 from OSC import OSCServer
 from OSC import OSCClient, OSCMessage
 
@@ -28,6 +33,9 @@ parser.add_argument("--notifierport", type=int, default=8002,
 parser.add_argument("--bouncetime", type=int, default=1000,
   help="Debounce time for the buttons")
 
+parser.add_argument("--toggle", type=bool, default=False,
+  help="Switch to toggle play mode (default is fire-and-forget)")
+
 args = parser.parse_args()
 
 def log_uncaught_exceptions(exception_type, exception, tb):
@@ -42,59 +50,71 @@ client = OSCClient()
 def handle_timeout(self):
   self.timed_out = True
 
-toggle = False
+running = False
+last_button = None
+last_play_time = datetime.now()
 
 def button_press(channel):
   """on button down"""
   try:
-    global toggle
-    toggle = False if toggle else True
+    global running
 
-    if toggle is True:
-      client.send( OSCMessage("/play", button_map[str(channel)] ) )
+    # Check for a timeout of 1 hour to make sure we can play after some time, if missing server packages
+
+    since = datetime.now() - last_play_time
+
+    if since > play_timeout:
+      running = False
+
+    if running is False:
+      try:
+        client.send( OSCMessage("/play", button_map.index(channel) ) )
+        running = True
+        last_play_time = datetime.now()
+      except Exception,e:
+        print "Button "+str(channel)+" not in map:", button_map
+        pass
     else:
-      client.send( OSCMessage("/stop" ) )
+      if args.toggle:
+        client.send( OSCMessage("/stop" ) )
   except Exception, e:
     pass
 
-
 def remote_stopped_callback(path, tags, args, source):
-  global toggle
-  toggle = False
-  print "Player stopped"
+  global running
+  running = False
+  print "Player stopped", args
 
 def remote_started_callback(path, tags, args, source):
-  print "Player started"
-  pass
+  print "Player started", args
+  # global running
+  # running = True
 
 if __name__ == "__main__":
   sys.excepthook = log_uncaught_exceptions
 
   notifications = OSCServer( (args.notifierip, args.notifierport) )
-  notifications.timeout = 0
+  notifications.timeout = 0.1
   # funny python's way to add a method to an instance of a class
   notifications.handle_timeout = types.MethodType(handle_timeout, notifications)
 
   # RPi.GPIO Layout verwenden (wie Pin-Nummern)
   GPIO.setmode(GPIO.BOARD)
 
-  GPIO.setup(15, GPIO.IN, pull_up_down=GPIO.PUD_UP)
-  GPIO.add_event_detect(15, GPIO.FALLING, callback=button_press, bouncetime=args.bouncetime)
+  for _button in button_map:
+    GPIO.setup(_button, GPIO.IN, pull_up_down=GPIO.PUD_UP)
+    GPIO.add_event_detect(_button, GPIO.FALLING, callback=button_press, bouncetime=args.bouncetime)
 
   client.connect( (args.ip, args.port) )
   notifications.addMsgHandler( "/stopped", remote_stopped_callback )
   notifications.addMsgHandler( "/playing", remote_started_callback )
 
-  print notifications
-  print client
+  print "StaalPiPlayer Button Client ready!"
+  print "\tListening for player with:",notifications
+  print "\tSending commands to player with:",client
 
   while True:
     try:
-      # notifications.timed_out = False
-      # # handle all pending requests then return
-      # while not notifications.timed_out:
-      #   notifications.handle_request()
-      # time.sleep(1)
       notifications.serve_forever()
     except Exception, e:
       time.sleep(5)
