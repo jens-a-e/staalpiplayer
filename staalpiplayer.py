@@ -28,7 +28,7 @@ parser.add_argument("--notifierip", default="127.0.0.1",
 parser.add_argument("--notifierport", type=int, default=8002,
   help="The port to send notifications to")
 
-parser.add_argument("--statuspin", type=int, default=11,
+parser.add_argument("--statuspin", type=int, default=7,
   help="The status pin to blink on running")
 
 parser.add_argument("--files", default="./midi",
