@@ -121,8 +121,16 @@ def play_callback(path, tags, args, source):
 def quit_callback(path, tags, args, source):
   stop()
 
+def list_callback(path, tags, args, source):
+  """list files callback from osc"""
+  try:
+    notifier.send( OSCMessage("/files", get_midi_files()) )
+  except Exception,e:
+    print "List files failed!", e
+
 server.addMsgHandler( "/play", play_callback )
 server.addMsgHandler( "/stop", quit_callback )
+server.addMsgHandler( "/files", list_callback )
 
 if __name__ == "__main__":
   try:
@@ -133,6 +141,8 @@ if __name__ == "__main__":
     print "Reset done."
     print "\tlistening as:\t"+str(server)
     print "\tsending as:\t"+str(notifier)
+
+    notifier.send( OSCMessage("/files", get_midi_files()) )
 
     # Dauersschleife
     while 1:

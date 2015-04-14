@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 from datetime import datetime, timedelta
 
-button_map = (15,16,18)
+button_map = (15,16)
 
 # This is just for absolute backup, if server did not respond with '/stopped'
 play_timeout = timedelta(hours=1)
@@ -67,10 +67,14 @@ def button_press(channel):
 
     if running is not True:
       try:
+        # Check if button was the same
+        if last_button != None && channel == last_button:
+          return
         print "Sending play",button_map.index(channel)
         client.send( OSCMessage("/play", button_map.index(channel) ) )
         running = True
         last_play_time = datetime.now()
+        last_button = channel
         print "Last play time",last_play_time
       except Exception,e:
         print "Button "+str(channel)+" not in map:", button_map
