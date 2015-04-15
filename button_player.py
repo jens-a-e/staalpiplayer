@@ -1,10 +1,13 @@
 #!/usr/bin/env python
 from datetime import datetime, timedelta
 
-button_map = (15,16)
+trigger1 = 15
+trigger2 = 16
 
-# This is just for absolute backup, if server did not respond with '/stopped'
-play_timeout = timedelta(hours=1)
+button_map = (trigger1, trigger2) # Trigger 1 & Trigger 2
+
+# Reset to initial state after set timeout
+play_timeout = timedelta(minutes=10)
 
 #####################################################################
 import time
@@ -52,18 +55,20 @@ def handle_timeout(self):
   self.timed_out = True
 
 running = False
-last_button = None
+last_state = "idle"
 last_play_time = datetime.now()
 
 def button_press(channel):
   """on button down"""
   try:
-    global running, last_play_time
-    # Check for a timeout of 1 hour to make sure we can play after some time, if missing server packages
+    global running, last_play_time, last_state, button_map, trigger1, trigger2
 
+    # Check for a timeout to make sure we can start over after some time
     if datetime.now() - last_play_time > play_timeout:
       print "Player timed out. Sending play anyways..."
       running = False
+      last_button = trigger2
+      last_state = "idle"
 
     if running is not True:
       try:
