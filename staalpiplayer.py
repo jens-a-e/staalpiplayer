@@ -31,10 +31,10 @@ parser.add_argument("--notifierport", type=int, default=8002,
 parser.add_argument("--statuspin", type=int, default=7,
   help="The status pin to blink on running")
 
-parser.add_argument("--files", default="./midi",
+parser.add_argument("--files", default="/boot/staalplayer",
   help="The midi file directory with numbered MIDI files")
 
-parser.add_argument("--map", default="etc/midimap.txt",
+parser.add_argument("--map", default="/boot/staalplayer/midimap.txt",
   help="A file describing which MIDI note corresponds to which DMX channel(s) - In Max/MSP coll format!")
 
 args = parser.parse_args()
@@ -58,7 +58,11 @@ def song_end():
   if run is not False:
     print "Song ended."
     run = False
-    notifier.send( OSCMessage("/stopped") )
+    try:
+      notifier.send( OSCMessage("/stopped") )
+    except Exception, e:
+      print "Tried to send /stopped, but failed with:", e
+      raise
 
 dmx = dmxout.start_dmx(args.s,song_end,args.map)
 
@@ -142,7 +146,9 @@ if __name__ == "__main__":
     print "\tlistening as:\t"+str(server)
     print "\tsending as:\t"+str(notifier)
 
-    notifier.send( OSCMessage("/files", get_midi_files()) )
+    _files = get_midi_files()
+    print "Found these MIDI files", _files
+    notifier.send( OSCMessage("/files", _files) )
 
     # Dauersschleife
     while 1:
