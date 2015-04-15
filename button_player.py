@@ -56,12 +56,14 @@ def handle_timeout(self):
 
 running = False
 last_state = "idle"
+last_button = trigger2
+
 last_play_time = datetime.now()
 
 def button_press(channel):
   """on button down"""
   try:
-    global running, last_play_time, last_state, button_map, trigger1, trigger2
+    global running, last_play_time, last_state, last_button, button_map, trigger1, trigger2
 
     # Check for a timeout to make sure we can start over after some time
     if datetime.now() - last_play_time > play_timeout:
@@ -73,7 +75,7 @@ def button_press(channel):
     if running is not True:
       try:
         # Check if button was the same
-        if last_button != None && channel == last_button:
+        if last_button != None and channel == last_button:
           return
         print "Sending play",button_map.index(channel)
         client.send( OSCMessage("/play", button_map.index(channel) ) )
@@ -82,7 +84,7 @@ def button_press(channel):
         last_button = channel
         print "Last play time",last_play_time
       except Exception,e:
-        print "Button "+str(channel)+" not in map:", button_map
+        print "Button "+str(channel)+" not in map:", button_map, e
         pass
     else:
       if args.toggle:
@@ -101,32 +103,48 @@ def remote_started_callback(path, tags, args, source):
   # global running
   # running = True
 
+def remote_files_callback(path, tags, args, source):
+  print "Player has these files:", args
+  # global running
+  # running = True
+
+
 if __name__ == "__main__":
-  sys.excepthook = log_uncaught_exceptions
+  try:
+    sys.excepthook = log_uncaught_exceptions
 
-  notifications = OSCServer( (args.notifierip, args.notifierport) )
-  notifications.timeout = 0.1
-  # funny python's way to add a method to an instance of a class
-  notifications.handle_timeout = types.MethodType(handle_timeout, notifications)
+    notifications = OSCServer( (args.notifierip, args.notifierport) )
+    notifications.timeout = 0.1
+    # funny python's way to add a method to an instance of a class
+    notifications.handle_timeout = types.MethodType(handle_timeout, notifications)
 
-  # RPi.GPIO Layout verwenden (wie Pin-Nummern)
-  GPIO.setmode(GPIO.BOARD)
+    # RPi.GPIO Layout verwenden (wie Pin-Nummern)
+    GPIO.setmode(GPIO.BOARD)
 
-  for _button in button_map:
-    GPIO.setup(_button, GPIO.IN, pull_up_down=GPIO.PUD_UP)
-    GPIO.add_event_detect(_button, GPIO.FALLING, callback=button_press, bouncetime=args.bouncetime)
+    for _button in button_map:
+      GPIO.setup(_button, GPIO.IN, pull_up_down=GPIO.PUD_DOWN) # PUD_DOWN, because we use a pull down resistor, use RISING in next line then!
+      GPIO.add_event_detect(_button, GPIO.RISING, callback=button_press, bouncetime=args.bouncetime)
 
-  client.connect( (args.ip, args.port) )
-  notifications.addMsgHandler( "/stopped", remote_stopped_callback )
-  notifications.addMsgHandler( "/playing", remote_started_callback )
+    client.connect( (args.ip, args.port) )
+    notifications.addMsgHandler( "/stopped", remote_stopped_callback )
+    notifications.addMsgHandler( "/playing", remote_started_callback )
+    notifications.addMsgHandler( "/files", remote_files_callback )
 
-  print "StaalPiPlayer Button Client ready!"
-  print "\tListening for player with:",notifications
-  print "\tSending commands to player with:",client
+    print "StaalPiPlayer Button Client ready!"
+    print "\tListening for player with:",notifications
+    print "\tSending commands to player with:",client
 
-  while True:
-    try:
-      notifications.serve_forever()
-    except Exception, e:
-      time.sleep(5)
-      pass
+    while True:
+      try:
+        notifications.serve_forever()
+      except Exception, e:
+        time.sleep(5)
+        pass
+
+  except Exception, e:
+    pass
+  finally:
+    GPIO.cleanup()
+    client.send( OSCMessage("/stop" ) )
+    notifications.close()
+    pass
