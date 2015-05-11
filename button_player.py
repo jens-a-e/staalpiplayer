@@ -1,41 +1,20 @@
 #!/usr/bin/env python
-
 ##### settings #######################################################
-
-trigger1 = 15
-trigger2 = 16
+triggers =(15, 16)
 
 # Timeouts (all in seconds)
 # set a timeout per trigger to wait until a new trigger can be engaged
-timeout1 = 10
-timeout2 = 20
+timeouts = (10, 20)
 
 # timeout to reset the system in idle;
 # make sure, this timeout is larger than any trigger specific one!
-global_timeout = 60
+global_timeout = 10*60
 
+start_index = 0
+max_track_length = 5 * 60 # set to 5 minutes
 
-##### init settings ##################################################
-from datetime import datetime, timedelta
-
-button_map = ( trigger1, trigger2) # Trigger 1 & Trigger 2
-timeouts   = ( timedelta(seconds=timeout1), timedelta(seconds=timeout2) )
-
-global_timeout = timedelta(seconds=global_timeout)
-
-#####################################################################
-import time
-import types
-import sys
+#### try loading from the config file ################################
 import argparse
-
-import RPi.GPIO as GPIO
-
-GPIO.setwarnings(False)
-
-from OSC import OSCServer
-from OSC import OSCClient, OSCMessage
-
 parser = argparse.ArgumentParser()
 
 parser.add_argument("--ip", default="127.0.0.1",
@@ -54,7 +33,59 @@ parser.add_argument("--bouncetime", type=int, default=1000,
 parser.add_argument("--toggle", type=bool, default=False,
   help="Switch to toggle play mode (default is fire-and-forget)")
 
+parser.add_argument("--config", default="/boot/staalplayer/buttons.json", help="Config file to load")
+
 args = parser.parse_args()
+
+import json
+
+try:
+  with open(args.config) as json_file:
+    data = json.load(json_file)
+    try:
+      if data['triggers']:
+        triggers = data['triggers']
+      if data['timeouts']:
+        timeouts = data['timeouts']
+      if data['global_timeout']:
+        global_timeout = data['global_timeout']
+      if data['max_track_length']:
+        max_track_length = data['max_track_length']
+      if data['start_index']:
+        start_index = data['start_index']
+    except Exception, e:
+      print e
+except Exception, e:
+  "Error loading config file", e
+  raise e
+
+##### init settings ##################################################
+from datetime import datetime, timedelta
+
+button_map = triggers
+timeouts   = [timedelta(seconds=t) for t in timeouts]
+
+global_timeout = timedelta(seconds=global_timeout)
+
+# print the current config:
+print "config:"
+print "\ttriggers:", triggers
+print "\ttimeouts:", timeouts
+print "\tglobal_timeout:", global_timeout
+print "\tstart_index:", start_index
+print "\tmax_track_length:", max_track_length
+
+#####################################################################
+import time
+import types
+import sys
+
+import RPi.GPIO as GPIO
+
+GPIO.setwarnings(False)
+
+from OSC import OSCServer
+from OSC import OSCClient, OSCMessage
 
 def log_uncaught_exceptions(exception_type, exception, tb):
   # print exception_type, exception, tb
@@ -78,11 +109,7 @@ last_play_time = datetime.now()
 def button_press(channel):
   """on button down"""
   try:
-    global running, global_timeout, last_play_time, state, button_map, trigger1, trigger2, timeouts
-
-    print "############### button pressed ################"
-    print "channel", channel
-    print "state", state
+    global running, global_timeout, last_play_time, state, button_map, timeouts, max_track_length, start_index
 
     # Map the channel to configured trigger
     index = -1
@@ -97,40 +124,37 @@ def button_press(channel):
       print "Trigger does seem to be configured", channel, index
       return
 
+    # check wether the index is a valid start trigger
+    if (state < 0 and index != start_index):
+      # print "Invalid start trigger"
+      return
+
     # try to get the timeout for the current state
     try:
-      timeout = timeouts[index]
+      timeout = timeouts[state]
     except Exception, e:
       timeout = 0
 
-
-    # what is the current state?
     # determine the next state
     next_state = state
     now = datetime.now()
 
     since = now - last_play_time
 
-    print "index", index
-    print "time since last play", since
-    print "timeout for current state", timeout
-    print "timeout checks", (since >= global_timeout), (since >= timeout)
-
     # check for 'after boot' or global timeout
-    if state == -2:
-      next_state = 0
-    elif since >= global_timeout:
-      print "global timeout; setting back to idle"
-      next_state = 0 # idle
+    if state == -2 or since >= global_timeout:
+      if index == start_index:
+        state = -1
+        next_state = index
+      else:
+        return
     # check for the current state timeout
     elif since >= timeout:
       next_state = index
-      print "state local timeout; setting to", next_state, state
 
     # only proceed, if we where in idle or had a transition
     didTransition = False
     if next_state != state:
-      print "changing state from", state, "to", next_state
       running = False # force player restart
       didTransition = True
 
@@ -140,7 +164,8 @@ def button_press(channel):
       # update the state & context
       state = next_state
       running = True
-      last_play_time = datetime.now()
+      # set an assumed stop time to be independent from the player server
+      last_play_time = datetime.now() + timedelta(seconds=max_track_length)
       print "Play trigger sent!", last_play_time
 
     # only, if the toggle option is used
@@ -153,8 +178,9 @@ def button_press(channel):
     pass
 
 def remote_stopped_callback(path, tags, args, source):
-  global running
+  global running, last_play_time
   running = False
+  last_play_time = datetime.now()
   print "Player stopped", args
 
 def remote_started_callback(path, tags, args, source):
