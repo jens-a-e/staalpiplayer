@@ -13,6 +13,8 @@ from os import path
 from OSC import OSCServer
 from OSC import OSCClient, OSCMessage
 
+GPIO.setwarnings(False)
+
 parser = argparse.ArgumentParser()
 
 parser.add_argument("-s", default="/dev/ttyUSB0",

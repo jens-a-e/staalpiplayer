@@ -1,13 +1,27 @@
 #!/usr/bin/env python
-from datetime import datetime, timedelta
+
+##### settings #######################################################
 
 trigger1 = 15
 trigger2 = 16
 
-button_map = (trigger1, trigger2) # Trigger 1 & Trigger 2
+# Timeouts (all in seconds)
+# set a timeout per trigger to wait until a new trigger can be engaged
+timeout1 = 10
+timeout2 = 20
 
-# Reset to initial state after set timeout
-play_timeout = timedelta(minutes=10)
+# timeout to reset the system in idle;
+# make sure, this timeout is larger than any trigger specific one!
+global_timeout = 60
+
+
+##### init settings ##################################################
+from datetime import datetime, timedelta
+
+button_map = ( trigger1, trigger2) # Trigger 1 & Trigger 2
+timeouts   = ( timedelta(seconds=timeout1), timedelta(seconds=timeout2) )
+
+global_timeout = timedelta(seconds=global_timeout)
 
 #####################################################################
 import time
@@ -17,6 +31,7 @@ import argparse
 
 import RPi.GPIO as GPIO
 
+GPIO.setwarnings(False)
 
 from OSC import OSCServer
 from OSC import OSCClient, OSCMessage
@@ -48,49 +63,93 @@ def log_uncaught_exceptions(exception_type, exception, tb):
 
 client = OSCClient()
 
+# Server specific timeout handling:
 # this method of reporting timeouts only works by convention
 # that before calling handle_request() field .timed_out is
 # set to False
 def handle_timeout(self):
   self.timed_out = True
 
+# create initial context
+state = -2 # -1: idle, other >= 0, correspond to trigger index
 running = False
-last_state = "idle"
-last_button = trigger2
-
 last_play_time = datetime.now()
 
 def button_press(channel):
   """on button down"""
   try:
-    global running, last_play_time, last_state, last_button, button_map, trigger1, trigger2
+    global running, global_timeout, last_play_time, state, button_map, trigger1, trigger2, timeouts
 
-    # Check for a timeout to make sure we can start over after some time
-    if datetime.now() - last_play_time > play_timeout:
-      print "Player timed out. Sending play anyways..."
-      running = False
-      last_button = trigger2
-      last_state = "idle"
+    print "############### button pressed ################"
+    print "channel", channel
+    print "state", state
 
-    if running is not True:
-      try:
-        # Check if button was the same
-        if last_button != None and channel == last_button:
-          return
-        print "Sending play",button_map.index(channel)
-        client.send( OSCMessage("/play", button_map.index(channel) ) )
-        running = True
-        last_play_time = datetime.now()
-        last_button = channel
-        print "Last play time",last_play_time
-      except Exception,e:
-        print "Button "+str(channel)+" not in map:", button_map, e
-        pass
+    # Map the channel to configured trigger
+    index = -1
+    try:
+      index = button_map.index(channel)
+    except Exception, e:
+      print "Error, unkown trigger"
+      print "Button "+str(channel)+" not in map:", button_map, e
+      return
+    # if no trigger is set, complain & return
+    if index < 0:
+      print "Trigger does seem to be configured", channel, index
+      return
+
+    # try to get the timeout for the current state
+    try:
+      timeout = timeouts[index]
+    except Exception, e:
+      timeout = 0
+
+
+    # what is the current state?
+    # determine the next state
+    next_state = state
+    now = datetime.now()
+
+    since = now - last_play_time
+
+    print "index", index
+    print "time since last play", since
+    print "timeout for current state", timeout
+    print "timeout checks", (since >= global_timeout), (since >= timeout)
+
+    # check for 'after boot' or global timeout
+    if state == -2:
+      next_state = 0
+    elif since >= global_timeout:
+      print "global timeout; setting back to idle"
+      next_state = 0 # idle
+    # check for the current state timeout
+    elif since >= timeout:
+      next_state = index
+      print "state local timeout; setting to", next_state, state
+
+    # only proceed, if we where in idle or had a transition
+    didTransition = False
+    if next_state != state:
+      print "changing state from", state, "to", next_state
+      running = False # force player restart
+      didTransition = True
+
+    if running is not True and didTransition:
+      print "Sending play",index
+      client.send( OSCMessage("/play", index ) )
+      # update the state & context
+      state = next_state
+      running = True
+      last_play_time = datetime.now()
+      print "Play trigger sent!", last_play_time
+
+    # only, if the toggle option is used
     else:
       if args.toggle:
         client.send( OSCMessage("/stop" ) )
+
   except Exception, e:
-    print "Error on button press:",e
+    print "Error on button press:", e
     pass
 
 def remote_stopped_callback(path, tags, args, source):
@@ -105,8 +164,6 @@ def remote_started_callback(path, tags, args, source):
 
 def remote_files_callback(path, tags, args, source):
   print "Player has these files:", args
-  # global running
-  # running = True
 
 
 if __name__ == "__main__":
